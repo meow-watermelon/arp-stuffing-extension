@@ -12,6 +12,8 @@ def get_identifier():
     return identifier
 
 def construct_data_payload(*args):
+    # order of argeuments:
+    # Target Host IP Address|Target Host IP Netmask|Target Host Broadcast IP Address|Getway IP Address|Gateway Netmask|DNS1 IP Address|DNS2 IP Address|DNS3 IP Address
     data_payload = args
     data_payload_string = '|'.join(data_payload)
 
@@ -84,8 +86,6 @@ if __name__ == '__main__':
         sys.exit(2)
 
     # build Echo Request data payload
-    # order of argeuments:
-    # Target Host IP Address|Target Host IP Netmask|Target Host Broadcast IP Address|Getway IP Address|Gateway Netmask|DNS1 IP Address|DNS2 IP Address|DNS3 IP Address
     echo_request_data_payload = construct_data_payload(args.ipdst, args.dstipnetmask, args.dstbroadcastip, args.dstgatewayip, args.dstgatewaynetmask, args.dstdns1ip, args.dstdns2ip, args.dstdns3ip)
 
     print('##### Echo Request Data Payload #####')
@@ -112,5 +112,5 @@ if __name__ == '__main__':
         # display packet information
         display_packet_info(echo_request_packet)
 
-        # send ARP request every 1 second
+        # send ICMP Echo Request packet
         sendp(echo_request_packet, iface=args.interface, count=1)
