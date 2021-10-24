@@ -89,7 +89,7 @@ if __name__ == '__main__':
 
     print('##### Echo Request Data Payload #####')
     print()
-    print(echo_request_data_payload)
+    print('Data Payload String: %s\n' %(echo_request_data_payload))
     print('Target Host IP Address: %s' %(args.ipdst))
     print('Target Host IP Netmask: %s' %(args.dstipnetmask))
     print('Target Host Broadcast IP Address: %s' %(args.dstbroadcastip))
