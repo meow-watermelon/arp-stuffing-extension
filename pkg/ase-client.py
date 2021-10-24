@@ -24,6 +24,7 @@ def build_echo_request_packet(eth_hw_src, eth_hw_dst, ip_src, ip_dst, data_paylo
     # IP packet header
     ip_version = 4
     ip_ttl = 64
+    ip_proto = 1
 
     # ICMP message header
     icmp_type = 8
@@ -33,7 +34,7 @@ def build_echo_request_packet(eth_hw_src, eth_hw_dst, ip_src, ip_dst, data_paylo
 
     # construct Echo Request packet
     try:
-        echo_request_packet = Ether(dst=eth_hw_dst, src=eth_hw_src, type=ether_type)/IP(version=ip_version, ttl=ip_ttl, src=ip_src, dst=ip_dst)/ICMP(type=icmp_type, code=icmp_code, id=icmp_id, seq=icmp_seq)/Raw(load=data_payload_string)
+        echo_request_packet = Ether(dst=eth_hw_dst, src=eth_hw_src, type=ether_type)/IP(version=ip_version, ttl=ip_ttl, proto=ip_proto, src=ip_src, dst=ip_dst)/ICMP(type=icmp_type, code=icmp_code, id=icmp_id, seq=icmp_seq)/Raw(load=data_payload_string)
     except Exception as e:
         return False
     else:
