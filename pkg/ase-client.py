@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import ipaddress
 import os
 from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp
 import sys
@@ -70,7 +71,7 @@ if __name__ == '__main__':
     parser.add_argument('--ipsrc', type=str, required=True, help='Source IP address')
     parser.add_argument('--ipdst', type=str, required=True, help='Destination IP address ')
     parser.add_argument('--dstipnetmask', type=str, required=True, help='Destination IP netmask')
-    parser.add_argument('--dstbroadcastip', type=str, required=True, help='Destination broadcast IP address')
+    parser.add_argument('--dstbroadcastip', type=str, required=False, help='Destination broadcast IP address')
     parser.add_argument('--dstgatewayip', type=str, required=False, default='', help='Destination gateway IP address')
     parser.add_argument('--dstgatewaynetmask', type=str, required=False, default='', help='Destination gateway netmask')
     parser.add_argument('--dstdns1ip', type=str, required=False, default='', help='Destination DNS1 IP address')
@@ -84,6 +85,10 @@ if __name__ == '__main__':
     if euid != 0:
         print('Please run this utility under root user permission.')
         sys.exit(2)
+
+    # if destination broadcast IP address is not defined, populate it from subnet mask
+    if not args.dstbroadcastip:
+        args.dstbroadcastip = str(ipaddress.IPv4Network(args.ipdst+'/'+args.dstipnetmask, strict=False).broadcast_address)
 
     # build Echo Request data payload
     echo_request_data_payload = construct_data_payload(args.ipdst, args.dstipnetmask, args.dstbroadcastip, args.dstgatewayip, args.dstgatewaynetmask, args.dstdns1ip, args.dstdns2ip, args.dstdns3ip)
