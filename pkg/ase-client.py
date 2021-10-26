@@ -3,7 +3,7 @@
 import argparse
 import ipaddress
 import os
-from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp
+from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,srp,srp1
 import sys
 
 def get_identifier():
@@ -51,19 +51,29 @@ def display_packet_info(packet):
     print()
     print(hexdump(packet))
     print()
+    print(packet.command())
+    print()
 
-def display_interfaces_info():
-    interfaces_list = []
+def get_interfaces_info():
+    interfaces_dict = {}
 
     for interface in get_working_ifaces():
         if_name = interface.name
         if_mac = interface.mac
 
-        interfaces_list.append(if_name+'|'+if_mac)
+        interfaces_dict[if_name] = if_mac
 
-    return ' '.join(interfaces_list)
+    return interfaces_dict
+
+def display_interfaces_info(interfaces_dict):
+    interfaces_string = ' '.join([k+'|'+v for k,v in interfaces_dict.items()])
+
+    return interfaces_string
 
 if __name__ == '__main__':
+    # pre-set required variables
+    interfaces = get_interfaces_info()
+
     # set up command arguments
     parser = argparse.ArgumentParser(description='ARP Stuffing Extension Client - Scapy Version')
     parser.add_argument('--ethersrc', type=str, required=True, help='Ethernet source hardware address')
@@ -77,7 +87,8 @@ if __name__ == '__main__':
     parser.add_argument('--dstdns1ip', type=str, required=False, default='', help='Destination DNS1 IP address')
     parser.add_argument('--dstdns2ip', type=str, required=False, default='', help='Destination DNS2 IP address')
     parser.add_argument('--dstdns3ip', type=str, required=False, default='', help='Destination DNS3 IP address')
-    parser.add_argument('--interface', type=str, required=True, help='Interface to send ICMP request (interfaces: %s)' %(display_interfaces_info()))
+    parser.add_argument('--interface', type=str, required=True, help='Interface to send ICMP request (interfaces: %s)' %(display_interfaces_info(interfaces)))
+    parser.add_argument('--timeout', type=int, required=False, default=30, help='Timeout to wait for Echo Response packet (default: 30 secs)')
     args = parser.parse_args()
 
     # scapy needs superuser permission to send packets. check EUID and exit if it's not root user
@@ -89,6 +100,10 @@ if __name__ == '__main__':
     # if destination broadcast IP address is not defined, populate it from subnet mask
     if not args.dstbroadcastip:
         args.dstbroadcastip = str(ipaddress.IPv4Network(args.ipdst+'/'+args.dstipnetmask, strict=False).broadcast_address)
+
+    if args.interface not in interfaces:
+        print('%s is not a valid interface name.' %(args.interface))
+        sys.exit(3)
 
     # build Echo Request data payload
     echo_request_data_payload = construct_data_payload(args.ipdst, args.dstipnetmask, args.dstbroadcastip, args.dstgatewayip, args.dstgatewaynetmask, args.dstdns1ip, args.dstdns2ip, args.dstdns3ip)
@@ -112,10 +127,16 @@ if __name__ == '__main__':
     if not echo_request_packet:
         # failed to build the Echo Request packet, exit
         print('Failed to build the Echo Request.')
-        sys.exit(3)
+        sys.exit(4)
     else:
         # display packet information
         display_packet_info(echo_request_packet)
 
         # send ICMP Echo Request packet
-        sendp(echo_request_packet, iface=args.interface, count=1)
+        echo_response_packet = srp1(echo_request_packet, iface=args.interface, retry=3, timeout=args.timeout)
+
+        if echo_response_packet:
+            display_packet_info(echo_response_packet)
+        else:
+            print('Failed to receive Echo Response from the target host.')
+            sys.exit(5)
