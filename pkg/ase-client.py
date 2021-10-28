@@ -6,6 +6,17 @@ import os
 from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,srp,srp1
 import sys
 
+def get_magic_number():
+    magic_string = 'arpstuffingextension'
+    magic_number_string = ''
+
+    for c in magic_string:
+        magic_number_string += str(ord(c))
+
+    magic_number = hex(int(magic_number_string))[2:]
+
+    return magic_number
+
 def get_identifier():
     # 65535 = 0xffff
     identifier = os.getpid() % 65535
@@ -14,7 +25,7 @@ def get_identifier():
 
 def construct_data_payload(*args):
     # order of argeuments:
-    # Target Host IP Address|Target Host IP Netmask|Target Host Broadcast IP Address|Getway IP Address|Gateway Netmask|DNS1 IP Address|DNS2 IP Address|DNS3 IP Address
+    # Packet Magic Number|Target Host IP Address|Target Host IP Netmask|Target Host Broadcast IP Address|Gateway IP Address|Gateway Netmask|DNS1 IP Address|DNS2 IP Address|DNS3 IP Address
     data_payload = args
     data_payload_string = '|'.join(data_payload)
 
@@ -105,16 +116,20 @@ if __name__ == '__main__':
         print('%s is not a valid interface name.' %(args.interface))
         sys.exit(3)
 
+    # get magic number
+    packet_magic_number = get_magic_number()
+
     # build Echo Request data payload
-    echo_request_data_payload = construct_data_payload(args.ipdst, args.dstipnetmask, args.dstbroadcastip, args.dstgatewayip, args.dstgatewaynetmask, args.dstdns1ip, args.dstdns2ip, args.dstdns3ip)
+    echo_request_data_payload = construct_data_payload(packet_magic_number, args.ipdst, args.dstipnetmask, args.dstbroadcastip, args.dstgatewayip, args.dstgatewaynetmask, args.dstdns1ip, args.dstdns2ip, args.dstdns3ip)
 
     print('##### Echo Request Data Payload #####')
     print()
     print('Data Payload String: %s\n' %(echo_request_data_payload))
+    print('Packet Magic Number: %s' %(packet_magic_number))
     print('Target Host IP Address: %s' %(args.ipdst))
     print('Target Host IP Netmask: %s' %(args.dstipnetmask))
     print('Target Host Broadcast IP Address: %s' %(args.dstbroadcastip))
-    print('Getway IP Address: %s' %(args.dstgatewayip))
+    print('Gateway IP Address: %s' %(args.dstgatewayip))
     print('Gateway Netmask: %s' %(args.dstgatewaynetmask))
     print('DNS1 IP Address: %s' %(args.dstdns1ip))
     print('DNS2 IP Address: %s' %(args.dstdns2ip))
