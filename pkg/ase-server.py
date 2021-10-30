@@ -4,7 +4,13 @@ import ipaddress
 import os
 import re
 from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,sniff,srp,srp1,IPSession
+import signal
 import sys
+
+def signal_handler(signal_number, frame):
+    print('Signal %s is captured, triggering cleanup task ...' %(signal_number))
+    cleanup()
+    sys.exit(0)
 
 def get_payload(packet, packet_payload):
     packet_payload.clear()
@@ -44,7 +50,13 @@ def sniff_stop_callback(packet, magic_number):
 def setup_network(packet_payload):
     pass
 
+def rollback_network_config():
+    pass
+
 def build_echo_reponse_packet(packet_payload):
+    pass
+
+def cleanup():
     pass
 
 if __name__ == '__main__':
@@ -53,6 +65,10 @@ if __name__ == '__main__':
 
     # define a dict to store ICMP Echo Request
     icmp_echo_request_dict = {}
+
+    # register the signal handler
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # scapy needs superuser permission to send packets. check EUID and exit if it's not root user
     euid = os.geteuid()
