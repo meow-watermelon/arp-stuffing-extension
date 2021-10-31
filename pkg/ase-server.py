@@ -6,6 +6,7 @@ import re
 from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,sniff,srp,srp1,IPSession
 import signal
 import sys
+import time
 
 def signal_handler(signal_number, frame):
     print('Signal %s is captured, triggering cleanup task ...' %(signal_number))
@@ -47,8 +48,63 @@ def sniff_stop_callback(packet, magic_number):
             print()
             return True
 
+def get_ethernet_interface_name(ethernet_mac_address):
+    ethernet_interface_name = None
+
+    for interface in get_working_ifaces():
+        if interface.mac == ethernet_mac_address:
+            ethernet_interface_name = interface.name
+            break
+
+    return ethernet_interface_name
+
 def setup_network(packet_payload):
     pass
+
+def backup_network_config(timestamp, config_dict):
+    network_config_backup_dir = '/var/run/ase-backup'
+
+    # if the backup directory does not exist, create one
+    if not os.path.exists(network_config_backup_dir):
+        try:
+            os.mkdir(network_config_backup_dir)
+        except:
+            # return False if cannot create the backup directory
+            return False
+
+    # backup address configs, return False if failed to save
+    ip_address_backup_filename = network_config_backup_dir+'/ip_address.'+str(timestamp)
+    ip_address_returncode = os.system('ip address save > '+ip_address_backup_filename)
+
+    if ip_address_returncode != 0:
+        return False
+    else:
+        print('IP Address Configs saved at %s' %(ip_address_backup_filename))
+
+    # backup route table configs, return False if failed to save
+    ip_route_table_backup_filename = network_config_backup_dir+'/ip_route_table.'+str(timestamp)
+    ip_route_table_returncode = os.system('ip route save table 0 > '+ip_route_table_backup_filename)
+ 
+    if ip_route_table_returncode != 0:
+        return False
+    else:
+        print('IP Route Table Configs saved at %s' %(ip_route_table_backup_filename))
+
+    # backup rule configs, return False if failed to save
+    ip_rule_backup_filename = network_config_backup_dir+'/ip_rule.'+str(timestamp)
+    ip_rule_returncode = os.system('ip rule save > '+ip_rule_backup_filename)
+
+    if ip_rule_returncode != 0:
+        return False
+    else:
+        print('IP Rule Configs saved at %s' %(ip_rule_backup_filename))
+
+    # update the config dict only when all backups are saved properly
+    config_dict['ip_address_backup_filename'] = ip_address_backup_filename
+    config_dict['ip_route_table_backup_filename'] = ip_route_table_backup_filename
+    config_dict['ip_rule_backup_filename'] = ip_rule_backup_filename
+
+    return True
 
 def rollback_network_config():
     pass
@@ -65,6 +121,12 @@ if __name__ == '__main__':
 
     # define a dict to store ICMP Echo Request
     icmp_echo_request_dict = {}
+
+    # define a dict to store configs
+    ase_config_dict = {}
+
+    # initialize timestamp
+    timestamp = int(time.time())
 
     # register the signal handler
     signal.signal(signal.SIGINT, signal_handler)
@@ -83,3 +145,16 @@ if __name__ == '__main__':
     print('##### ICMP Echo Request Packet Fields #####')
     for k,v in icmp_echo_request_dict.items():
         print(k+': '+str(v))
+    print()
+
+    # determine the ethernet interface name from the icmp_echo_request_dict
+    ethernet_interface_name = get_ethernet_interface_name(icmp_echo_request_dict['ether_dst'])
+    ase_config_dict['ethernet_interface_name'] = ethernet_interface_name
+
+    print('##### Ethernet Interface Information #####')
+    print('Ethernet Interface Name: %s' %(ethernet_interface_name))
+    print('Ethernet Interface MAC Address: %s' %(icmp_echo_request_dict['ether_dst']))
+
+    # backup network configurations
+    print('##### Backing up Network Configurations #####')
+    backup_flag = backup_network_config(timestamp, ase_config_dict)
