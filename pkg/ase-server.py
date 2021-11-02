@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import fcntl
 import ipaddress
 import os
 import re
@@ -144,7 +145,31 @@ def display_packet_info(packet):
     print()
 
 def cleanup():
-    pass
+    global ase_config_dict
+
+    # close the file handle of PID lock file
+    if 'pid_lock_file_fd' in ase_config_dict:
+        pid_lock_file_fd = ase_config_dict['pid_lock_file_fd']
+        pid_lock_file_fd.close()
+
+    # remove network configuration backups
+    if 'ip_address_backup_filename' in ase_config_dict and os.path.exists(ase_config_dict['ip_address_backup_filename']):
+        try:
+            os.unlink(ase_config_dict['ip_address_backup_filename'])
+        except:
+            pass
+
+    if 'ip_route_table_backup_filename' in ase_config_dict and os.path.exists(ase_config_dict['ip_route_table_backup_filename']):
+        try:
+            os.unlink(ase_config_dict['ip_route_table_backup_filename'])
+        except:
+            pass
+
+    if 'ip_rule_backup_filename' in ase_config_dict and os.path.exists(ase_config_dict['ip_rule_backup_filename']):
+        try:
+            os.unlink(ase_config_dict['ip_rule_backup_filename'])
+        except:
+            pass
 
 if __name__ == '__main__':
     # define the packet magic number
@@ -168,6 +193,23 @@ if __name__ == '__main__':
     if euid != 0:
         print('Please run this utility under root user permission.')
         sys.exit(2)
+
+    # check if multiple ASE servers are running
+    pid_lock_file = '/var/run/ase-server.pid'
+    ase_config_dict['pid_lock_file'] = pid_lock_file
+
+    try:
+        f = open(pid_lock_file, 'wb')
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        f.close()
+        print('Failed to acquire the exclusive lock, a running process exists already.')
+        sys.exit(2)
+    except OSError as e:
+        print('Failed to create the PID lock file: %s' %(e))
+    else:
+        ase_config_dict['pid_lock_file_fd'] = f
+        print('No process is running. Safe to initiate main program.')
 
     # start sniffing(ICMP Type 8) and stop if an ICMP Echo Rquest packet with the defined magic number is received
     sniff(filter='icmp and ip[20] == 8', session=IPSession, lfilter=lambda p: get_payload(p, icmp_echo_request_dict), stop_filter=lambda p: sniff_stop_callback(p, magic_number))
@@ -206,6 +248,7 @@ if __name__ == '__main__':
     if not echo_reply_packet:
         # failed to build the Echo Reply packet, exit
         print('Failed to build the Echo Reply.')
+        cleanup()
         sys.ext(4)
     else:
         # display packet information
@@ -214,3 +257,6 @@ if __name__ == '__main__':
         # send ICMP Echo Reply packet
         # send 3 packets in case packet loss encountered
         sendp(echo_reply_packet, iface=ethernet_interface_name, count=3, inter=5)
+
+    # clean up
+    cleanup()
