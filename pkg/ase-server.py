@@ -32,7 +32,7 @@ def get_payload(packet, packet_payload):
     try:
         packet_payload['icmp_data'] = packet[Raw].load.decode('ascii')
     except:
-        pass
+        packet_payload['icmp_data'] = ""
 
     return packet_payload
 
@@ -110,7 +110,38 @@ def rollback_network_config():
     pass
 
 def build_echo_reponse_packet(packet_payload):
-    pass
+    # Ethernet frame header
+    ether_type = 2048 # 0x0800
+
+    # IP packet header
+    ip_version = 4
+    ip_ttl = 64
+    ip_proto = 1
+
+    # ICMP message header
+    icmp_type = 0
+    icmp_code = 0
+    icmp_id = packet_payload['icmp_id']
+    icmp_seq = packet_payload['icmp_seq']
+
+    # construct Echo Reply packet
+    try:
+        echo_reply_request = Ether(dst=packet_payload['ether_src'], src=packet_payload['ether_dst'], type=ether_type)/IP(version=ip_version, ttl=ip_ttl, proto=ip_proto, src=packet_payload['ip_dst'], dst=packet_payload['ip_src'])/ICMP(type=icmp_type, code=icmp_code, id=icmp_id, seq=icmp_seq)/Raw(load=packet_payload['icmp_data'])
+    except Exception as e:
+        return False
+    else:
+        return echo_reply_request
+
+def display_packet_info(packet):
+    print('##### Raw Packet Bytes #####')
+    print(raw(packet))
+    print()
+    packet.show()
+    print()
+    print(hexdump(packet))
+    print()
+    print(packet.command())
+    print()
 
 def cleanup():
     pass
@@ -142,7 +173,7 @@ if __name__ == '__main__':
     sniff(filter='icmp and ip[20] == 8', session=IPSession, lfilter=lambda p: get_payload(p, icmp_echo_request_dict), stop_filter=lambda p: sniff_stop_callback(p, magic_number))
 
     # print the ICMP Echo Request fields from the icmp_echo_request_dict
-    print('##### ICMP Echo Request Packet Fields #####')
+    print('##### ICMP Echo Request Packet Data Payload Fields #####')
     for k,v in icmp_echo_request_dict.items():
         print(k+': '+str(v))
     print()
@@ -154,7 +185,32 @@ if __name__ == '__main__':
     print('##### Ethernet Interface Information #####')
     print('Ethernet Interface Name: %s' %(ethernet_interface_name))
     print('Ethernet Interface MAC Address: %s' %(icmp_echo_request_dict['ether_dst']))
+    print()
 
     # backup network configurations
     print('##### Backing up Network Configurations #####')
     backup_flag = backup_network_config(timestamp, ase_config_dict)
+    print()
+
+    # if backup_flag is True, then we can rollback the network configurations
+    if backup_flag:
+        ase_config_dict['rollback_availability'] = True
+    else:
+        ase_config_dict['rollback_availability'] = False
+
+    # set up network configurations
+
+    # send back Echo Reply to the Client
+    echo_reply_packet = build_echo_reponse_packet(icmp_echo_request_dict)
+
+    if not echo_reply_packet:
+        # failed to build the Echo Reply packet, exit
+        print('Failed to build the Echo Reply.')
+        sys.ext(4)
+    else:
+        # display packet information
+        display_packet_info(echo_reply_packet)
+
+        # send ICMP Echo Reply packet
+        # send 3 packets in case packet loss encountered
+        sendp(echo_reply_packet, iface=ethernet_interface_name, count=3, inter=5)
