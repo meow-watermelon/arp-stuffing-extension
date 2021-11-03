@@ -200,16 +200,21 @@ if __name__ == '__main__':
 
     try:
         f = open(pid_lock_file, 'wb')
-        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        f.close()
-        print('Failed to acquire the exclusive lock, a running process exists already.')
-        sys.exit(2)
     except OSError as e:
         print('Failed to create the PID lock file: %s' %(e))
     else:
-        ase_config_dict['pid_lock_file_fd'] = f
-        print('No process is running. Safe to initiate main program.')
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            f.close()
+            print('Failed to acquire the exclusive lock, a running process exists already.')
+            sys.exit(2)
+        except OSError as e:
+            f.close()
+            print('Failed to initial flock() call: %s' %(e))
+        else:
+            ase_config_dict['pid_lock_file_fd'] = f
+            print('No process is running. Safe to initiate main program.')
 
     # start sniffing(ICMP Type 8) and stop if an ICMP Echo Rquest packet with the defined magic number is received
     sniff(filter='icmp and ip[20] == 8', session=IPSession, lfilter=lambda p: get_payload(p, icmp_echo_request_dict), stop_filter=lambda p: sniff_stop_callback(p, magic_number))
