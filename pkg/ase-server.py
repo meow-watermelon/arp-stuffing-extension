@@ -4,7 +4,7 @@ import fcntl
 import ipaddress
 import os
 import re
-from scapy.all import Ether,IP,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,sniff,srp,srp1,IPSession
+from scapy.all import Ether,IP,IPSession,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,sniff,srp,srp1
 import signal
 import sys
 import time
@@ -59,9 +59,6 @@ def get_ethernet_interface_name(ethernet_mac_address):
 
     return ethernet_interface_name
 
-def setup_network(packet_payload):
-    pass
-
 def backup_network_config(timestamp, config_dict):
     network_config_backup_dir = '/var/run/ase-backup'
 
@@ -107,8 +104,26 @@ def backup_network_config(timestamp, config_dict):
 
     return True
 
-def rollback_network_config():
-    pass
+def setup_network(packet_payload):
+    data_payload_list = packet_payload['icmp_data'].split('|')
+
+    # th == target host
+    # acquire network configuration data from ICMP data payload
+    th_ethernet_interface = packet_payload['ethernet_interface_name']
+    th_ip_address = data_payload_list[1]
+    th_ip_netmask = data_payload_list[2]
+    th_ip_broadcast_address = data_payload_list[3]
+    th_gateway_ip_address = data_payload_list[4]
+    th_gateway_netmask = data_payload_list[5]
+    th_dns_ips = data_payload_list[6:]
+
+    # set up ethernet interface IP address
+
+    # set up gateway
+
+    # set up DNS resolvers
+
+    # bring up interface
 
 def build_echo_reponse_packet(packet_payload):
     # Ethernet frame header
@@ -147,27 +162,13 @@ def display_packet_info(packet):
 def cleanup():
     global ase_config_dict
 
-    # close the file handle of PID lock file
+    # close the file handle of PID lock file and delete it
     if 'pid_lock_file_fd' in ase_config_dict:
         pid_lock_file_fd = ase_config_dict['pid_lock_file_fd']
         pid_lock_file_fd.close()
 
-    # remove network configuration backups
-    if 'ip_address_backup_filename' in ase_config_dict and os.path.exists(ase_config_dict['ip_address_backup_filename']):
         try:
-            os.unlink(ase_config_dict['ip_address_backup_filename'])
-        except:
-            pass
-
-    if 'ip_route_table_backup_filename' in ase_config_dict and os.path.exists(ase_config_dict['ip_route_table_backup_filename']):
-        try:
-            os.unlink(ase_config_dict['ip_route_table_backup_filename'])
-        except:
-            pass
-
-    if 'ip_rule_backup_filename' in ase_config_dict and os.path.exists(ase_config_dict['ip_rule_backup_filename']):
-        try:
-            os.unlink(ase_config_dict['ip_rule_backup_filename'])
+            os.unlink(ase_config_dict['pid_lock_file'])
         except:
             pass
 
@@ -227,25 +228,24 @@ if __name__ == '__main__':
 
     # determine the ethernet interface name from the icmp_echo_request_dict
     ethernet_interface_name = get_ethernet_interface_name(icmp_echo_request_dict['ether_dst'])
-    ase_config_dict['ethernet_interface_name'] = ethernet_interface_name
+    icmp_echo_request_dict['ethernet_interface_name'] = ethernet_interface_name
 
     print('##### Ethernet Interface Information #####')
     print('Ethernet Interface Name: %s' %(ethernet_interface_name))
     print('Ethernet Interface MAC Address: %s' %(icmp_echo_request_dict['ether_dst']))
     print()
 
-    # backup network configurations
+    # backup network configurations in best efforts
     print('##### Backing up Network Configurations #####')
     backup_flag = backup_network_config(timestamp, ase_config_dict)
+    if backup_flag:
+        print('Network configurations are backed up successfully.')
+    else:
+        print('Failed to backup network configurations.')
     print()
 
-    # if backup_flag is True, then we can rollback the network configurations
-    if backup_flag:
-        ase_config_dict['rollback_availability'] = True
-    else:
-        ase_config_dict['rollback_availability'] = False
-
     # set up network configurations
+    setup_network(icmp_echo_request_dict)
 
     # send back Echo Reply to the Client
     echo_reply_packet = build_echo_reponse_packet(icmp_echo_request_dict)
