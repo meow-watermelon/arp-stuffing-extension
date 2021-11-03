@@ -118,12 +118,43 @@ def setup_network(packet_payload):
     th_dns_ips = data_payload_list[6:]
 
     # set up ethernet interface IP address
+    th_ip_netmask_bits = ipaddress.IPv4Network('%s/%s' %(th_ip_address, th_ip_netmask), strict=False).prefixlen
+    set_up_interface_rc = os.system('ip addr add %s/%d broadcast %s dev %s' %(th_ip_address, th_ip_netmask_bits, th_ip_broadcast_address, th_ethernet_interface))
 
-    # set up gateway
-
-    # set up DNS resolvers
+    if set_up_interface_rc != 0:
+        return False
+    else:
+        print('The interface %s is set up with IP address %s.' %(th_ethernet_interface, th_ip_address))
 
     # bring up interface
+    bring_up_interface_rc = os.system('ip link set dev %s up' %(th_ethernet_interface))
+
+    if bring_up_interface_rc != 0:
+        return False
+    else:
+        print('The interface %s is up.' %(th_ethernet_interface))
+
+    # set up gateway
+    set_up_gateway_rc = os.system('ip route add default via %s dev %s' %(th_gateway_ip_address, th_ethernet_interface))
+
+    if set_up_gateway_rc != 0:
+        return False
+    else:
+        print('Default gateway is set up via %s.' %(th_gateway_ip_address))
+
+    # set up DNS resolvers
+    # following code snippet wipes out /etc/resolv.conf
+    try:
+        with open('/etc/resolv.conf', 'wt') as f:
+            for r in th_dns_ips:
+                if not r:
+                    print('nameserver %s' %(r), file=f)
+    except:
+        return False
+    else:
+        print('DNS resolvers configuration is set up.')
+
+    return True
 
 def build_echo_reponse_packet(packet_payload):
     # Ethernet frame header
@@ -245,7 +276,13 @@ if __name__ == '__main__':
     print()
 
     # set up network configurations
-    setup_network(icmp_echo_request_dict)
+    setup_network_flag = setup_network(icmp_echo_request_dict)
+    if setup_network_flag:
+        print('Network configuration setup done.')
+    else:
+        print('Failed to set up network configuration.')
+        cleanup()
+        sys.exit(3)
 
     # send back Echo Reply to the Client
     echo_reply_packet = build_echo_reponse_packet(icmp_echo_request_dict)
