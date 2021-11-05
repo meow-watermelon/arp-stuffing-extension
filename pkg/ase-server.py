@@ -147,7 +147,7 @@ def setup_network(packet_payload):
     try:
         with open('/etc/resolv.conf', 'wt') as f:
             for r in th_dns_ips:
-                if not r:
+                if r:
                     print('nameserver %s' %(r), file=f)
     except:
         return False
