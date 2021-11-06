@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import fcntl
 import ipaddress
 import os
@@ -48,16 +49,6 @@ def sniff_stop_callback(packet, magic_number):
             print('Magic Number: %s' %(magic_number))
             print()
             return True
-
-def get_ethernet_interface_name(ethernet_mac_address):
-    ethernet_interface_name = None
-
-    for interface in get_working_ifaces():
-        if interface.mac == ethernet_mac_address:
-            ethernet_interface_name = interface.name
-            break
-
-    return ethernet_interface_name
 
 def backup_network_config(timestamp, config_dict):
     network_config_backup_dir = '/var/run/ase-backup'
@@ -135,24 +126,32 @@ def setup_network(packet_payload):
         print('The interface %s is up.' %(th_ethernet_interface))
 
     # set up gateway
-    set_up_gateway_rc = os.system('ip route add default via %s dev %s' %(th_gateway_ip_address, th_ethernet_interface))
+    # check if gateway settings are valid, skip if they are not valid
+    if th_gateway_ip_address and th_gateway_netmask:
+        set_up_gateway_rc = os.system('ip route add default via %s dev %s' %(th_gateway_ip_address, th_ethernet_interface))
 
-    if set_up_gateway_rc != 0:
-        return False
+        if set_up_gateway_rc != 0:
+            return False
+        else:
+            print('Default gateway is set up via %s.' %(th_gateway_ip_address))
     else:
-        print('Default gateway is set up via %s.' %(th_gateway_ip_address))
+        print('Default gateway configuration is not found.')
 
     # set up DNS resolvers
-    # following code snippet wipes out /etc/resolv.conf
-    try:
-        with open('/etc/resolv.conf', 'wt') as f:
-            for r in th_dns_ips:
-                if r:
-                    print('nameserver %s' %(r), file=f)
-    except:
-        return False
+    # check if DNS settings are valid, skip if they are not valid
+    if set(th_dns_ips) != {''}:
+        # following code snippet wipes out /etc/resolv.conf
+        try:
+            with open('/etc/resolv.conf', 'wt') as f:
+                for r in th_dns_ips:
+                    if r:
+                        print('nameserver %s' %(r), file=f)
+        except:
+            return False
+        else:
+            print('DNS resolvers configuration is set up.')
     else:
-        print('DNS resolvers configuration is set up.')
+        print('DNS resolvers configuration is not found.')
 
     return True
 
@@ -179,6 +178,22 @@ def build_echo_reponse_packet(packet_payload):
     else:
         return echo_reply_request
 
+def get_interfaces_info():
+    interfaces_dict = {}
+
+    for interface in get_working_ifaces():
+        if_name = interface.name
+        if_mac = interface.mac
+
+        interfaces_dict[if_name] = if_mac
+
+    return interfaces_dict
+
+def display_interfaces_info(interfaces_dict):
+    interfaces_string = ' '.join([k+'|'+v for k,v in interfaces_dict.items()])
+
+    return interfaces_string
+
 def display_packet_info(packet):
     print('##### Raw Packet Bytes #####')
     print(raw(packet))
@@ -204,6 +219,14 @@ def cleanup():
             pass
 
 if __name__ == '__main__':
+    # pre-set required variables
+    interfaces = get_interfaces_info()
+
+    # set up command arguments
+    parser = argparse.ArgumentParser(description='ARP Stuffing Extension Server - Scapy Version')
+    parser.add_argument('--interface', type=str, required=True, help='Interface to be configured (interfaces: %s)' %(display_interfaces_info(interfaces)))
+    args = parser.parse_args()
+
     # define the packet magic number
     magic_number = 'f789ea3b6958a7b09fc9e282c1a4bb44e9fc504a8bf59fc46'
 
@@ -225,6 +248,11 @@ if __name__ == '__main__':
     if euid != 0:
         print('Please run this utility under root user permission.')
         sys.exit(2)
+
+    # check if the passed interface name exists in the running system
+    if args.interface not in interfaces:
+        print('%s is not a valid interface name.' %(args.interface))
+        sys.exit(3)
 
     # check if multiple ASE servers are running
     pid_lock_file = '/var/run/ase-server.pid'
@@ -249,7 +277,8 @@ if __name__ == '__main__':
             print('No process is running. Safe to initiate main program.')
 
     # start sniffing(ICMP Type 8) and stop if an ICMP Echo Rquest packet with the defined magic number is received
-    sniff(filter='icmp and ip[20] == 8', session=IPSession, lfilter=lambda p: get_payload(p, icmp_echo_request_dict), stop_filter=lambda p: sniff_stop_callback(p, magic_number))
+    # sniff() call can only sniff on conf.iface interface by default, we must pass iface parameter to make it work
+    sniff(iface=args.interface, filter='icmp and ip[20] == 8', session=IPSession, lfilter=lambda p: get_payload(p, icmp_echo_request_dict), stop_filter=lambda p: sniff_stop_callback(p, magic_number))
 
     # print the ICMP Echo Request fields from the icmp_echo_request_dict
     print('##### ICMP Echo Request Packet Data Payload Fields #####')
@@ -257,12 +286,12 @@ if __name__ == '__main__':
         print(k+': '+str(v))
     print()
 
-    # determine the ethernet interface name from the icmp_echo_request_dict
-    ethernet_interface_name = get_ethernet_interface_name(icmp_echo_request_dict['ether_dst'])
-    icmp_echo_request_dict['ethernet_interface_name'] = ethernet_interface_name
+    # save the interface name into icmp_echo_request_dict for further use
+    icmp_echo_request_dict['ethernet_interface_name'] = args.interface
 
+    # print ethernet interface information
     print('##### Ethernet Interface Information #####')
-    print('Ethernet Interface Name: %s' %(ethernet_interface_name))
+    print('Ethernet Interface Name: %s' %(args.interface))
     print('Ethernet Interface MAC Address: %s' %(icmp_echo_request_dict['ether_dst']))
     print()
 
@@ -298,7 +327,7 @@ if __name__ == '__main__':
 
         # send ICMP Echo Reply packet
         # send 3 packets in case packet loss encountered
-        sendp(echo_reply_packet, iface=ethernet_interface_name, count=3, inter=5)
+        sendp(echo_reply_packet, iface=args.interface, count=3, inter=5)
 
     # clean up
     cleanup()
