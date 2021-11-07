@@ -2,16 +2,16 @@
 
 ## Intro
 
-I started this project around mid of Oct. 2021 when I read the ARP protocol chapter from the book [TCP/IP Illustrated, Volume 1: The Protocols](https://www.amazon.com/TCP-Illustrated-Protocols-Addison-Wesley-Professional/dp/0321336313). ARP Stuffing itself is a popular way to set up initial IP address on embedded devices which don't have keyboard or similar input peripheral. Here are the basic steps to use ARP Stuffing:
+I started this project around mid-Oct. 2021 when I read the ARP protocol chapter from the book [TCP/IP Illustrated, Volume 1: The Protocols](https://www.amazon.com/TCP-Illustrated-Protocols-Addison-Wesley-Professional/dp/0321336313). ARP Stuffing itself is a popular way to set up an initial IP address on embedded devices that don't have a keyboard or similar input peripheral. Here are the basic steps to use ARP Stuffing:
 
 1. The user's computer has an IP address stuffed manually into its address table (normally with the arp command with the MAC address taken from a label on the device)
 2. The computer sends special packets to the device, typically a ping packet with a non-default size.
 3. The device then adopts this IP address
 4. The user then communicates with it by telnet or web protocols to complete the configuration.
 
-Everything looks fine, right? Why I came up with this **ARP Stuffing Extension**? Well, first of all, ARP Stuffing only sets up IP address typically, which means the user still needs to login the host and set up default gateway and DNS etc.. So I was thinking if I can manipulate ICMP Echo Request packet to carry more information(gateway and DNS) then the target device can decode it and set up the network environment based on the data payload. This would be more convenient for the engineers who need to set up bunch of embedded devices. Of course, DHCP can be used in this scenario. However, it's an extension(I called it an extension :-)) on the original ARP Stuffing so we don't discuss DHCP use in this document. Secondly, I do notice the Python package [Scapy](https://scapy.readthedocs.io/en/latest/) is really powerful and I never wrote any networking protocol manipulation code before so I wanted to use this project to help me understand the protocols more comprehensively, education purpose :-)
+Everything looks fine, right? Why did I come up with this **ARP Stuffing Extension**? Well, first of all, ARP Stuffing only sets up IP address typically, which means the user still needs to log in to the host and set up default gateway and DNS etc.. So I was thinking if I can manipulate ICMP Echo Request packet to carry more information(gateway and DNS) then the target device can decode it and set up the network environment based on the data payload. This would be more convenient for the engineers who need to set up a bunch of embedded devices. Of course, DHCP can be used in this scenario. However, it's an extension(I called it an extension :-)) on the original ARP Stuffing so we don't discuss DHCP use in this document. Secondly, I do notice the Python package [Scapy](https://scapy.readthedocs.io/en/latest/) is really powerful and I never wrote any networking protocol manipulation code before so I wanted to use this project to help me understand the protocols more comprehensively, education purpose :-)
 
-The implementation I write is actually manipulating ICMP protocol. However, it's kinda using the same idea of ARP Stuffing so I would like to call it ARP Stuffing Extension. I will use the word **ASE** to indicate **ARP Stuffing Extension** in the rest of document.
+The implementation I write is actually manipulating ICMP protocol. However, it's kinda using the same idea of ARP Stuffing so I would like to call it ARP Stuffing Extension. I will use the word **ASE** to indicate **ARP Stuffing Extension** in the rest of the document.
 
 ## Terms
 
@@ -29,9 +29,9 @@ There are some terms I want to clarify before diving into details.
 
 ### High-level Review
 
-The main difference between ASE and original ARP Stuffing is the ASE Client generates a special ICMP Echo Request with required networking information for the Target Host. ICMP Echo Request packet has an *optional* data payload area so the ASE client stores all those networking information in that area. The ASE Server will run in standalone mode on the Target Host and listening on a specific Ethernet interface that we want to configure. Once the Target Host receives the *correct* the ICMP Echo Request packet from the Sender Host, the ASE Server will stop the sniffing then start to decode the packet and retrieve the data payload then saving them into some Python data structures. Once all needed information is saved properly, ASE Server will set up networking configuration and send ICMP Echo Reply packets to the Sender Host to notify ASE Client that the networking configuration is set up done on the Target Host then exit.
+The main difference between ASE and original ARP Stuffing is the ASE Client generates a special ICMP Echo Request with required networking information for the Target Host. ICMP Echo Request packet has an *optional* data payload area so the ASE client stores all those networking information in that area. The ASE Server will run in standalone mode on the Target Host and listen on a specific Ethernet interface that we want to configure. Once the Target Host receives the *correct* ICMP Echo Request packet from the Sender Host, the ASE Server will stop the sniffing then start to decode the packet and retrieve the data payload then saving them into some Python data structures. Once all needed information is saved properly, ASE Server will set up networking configuration and send ICMP Echo Reply packets to the Sender Host to notify ASE Client that the networking configuration is set up done on the Target Host then exit.
 
-Becase the IP protocol data delivery is in *best effort* mode, so in order to reduce the data loss possibility, the ASE Server will send 3 ICMP Echo Reply packets with 5 seconds gap. **All 3 ICMP Echo Reply packets have the same ICMP identifier and sequence number**.
+Because the IP protocol data delivery is in *best effort* mode, so in order to reduce the data loss possibility, the ASE Server will send 3 ICMP Echo Reply packets with 5 seconds gap. **All 3 ICMP Echo Reply packets have the same ICMP identifier and sequence number**.
 
 ### ICMP Echo Request Data Payload
 
@@ -54,7 +54,7 @@ magic_number = hex(int(output))[2:]
 
 The magic number is **f789ea3b6958a7b09fc9e282c1a4bb44e9fc504a8bf59fc46**.
 
-The required entries in the data payload are **Packet Magic Number**, **Target Host IP Address** and **Target Host IP Netmask**. Rest of entries are optional.
+The required entries in the data payload are **Packet Magic Number**, **Target Host IP Address** and **Target Host IP Netmask**. The rest of the entries are optional.
 
 ### ASE ICMP Echo Request Packet Example - Sender Host IP Address: 192.168.122.1 - WireShark Screenshot
 
@@ -136,21 +136,21 @@ optional arguments:
 
 #### ASE Server Notes
 
-1. ASE Server uses file locking facility to make sure only one instance can be running at the same time.
+1. ASE Server uses a file locking facility to make sure only one instance can be running at the same time.
 
 2. The Ethernet interface must be in **promiscuous mode** to support sniffing packets.
 
-3. Once ASE Server receives SIGINT or SIGTERM, a cleanup function will be triggered to close file handle and remove the PID lock file.
+3. Once ASE Server receives SIGINT or SIGTERM, a cleanup function will be triggered to close the filehandle and remove the PID lock file.
 
 4. Before setting up the networking configuration, ASE Server will back up the current Target Host networking configurations under `/var/run/ase-backup` directory.
 
-5. ASE will be terminated with non-zero exit code if it encounters any error during setting up networking configuration.
+5. ASE will be terminated with a non-zero exit code if it encounters an error during setting up networking configuration.
 
-6. **DO NOT** run ASE Server on a host that has networking configuration set up properly already. This may cause unpredictable results. Remember, ASE should be only used for the devices that don't have networking configurations.
+6. **DO NOT** run ASE Server on a host that has networking configuration set up properly already. This may cause unpredictable results. Remember, ASE should be only used for devices that don't have networking configurations.
 
 ## Usage Examples
 
-In this section, I use 2 Linux hosts to simulate Send Host and Target Host. Both are running Fedora 34. Users would notice I splitted some outputs to give better ideas on what actually happened. The example case I run is a successful running case.
+In this section, I use 2 Linux hosts to simulate Send Host and Target Host. Both are running Fedora 34. Users would notice I split some outputs to give better ideas on what actually happened. The example case I run is a successful running case.
 
 Sender Host Ethernet Interface Name: `virbr0`
 
