@@ -311,6 +311,7 @@ if __name__ == '__main__':
         print('Failed to set up network configuration.')
         cleanup()
         sys.exit(3)
+    print()
 
     # send back Echo Reply to the Client
     echo_reply_packet = build_echo_reponse_packet(icmp_echo_request_dict)
