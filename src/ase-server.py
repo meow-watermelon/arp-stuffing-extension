@@ -4,7 +4,6 @@ import argparse
 import fcntl
 import ipaddress
 import os
-import re
 from scapy.all import Ether,IP,IPSession,ICMP,Raw,get_working_ifaces,hexdump,raw,sendp,sniff,srp,srp1
 import signal
 import sys
